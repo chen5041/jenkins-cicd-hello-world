@@ -1,0 +1,140 @@
+pipeline{
+  agent{
+       kubernetes{
+         label 'jenkins-slave'
+         namespace "jenkins"
+         cloud "kubernetes" 
+         // 这里引用Pod模板
+         yamlFile '_ci/KubernetesPod.yaml'
+         
+          }        
+    }
+  options{timestamps()}
+   parameters {
+     string(name: 'BranchName', defaultValue: 'main', description: '构建分支')
+     string(name: 'NameSpace', defaultValue: 'jenkins', description: '部署k8s名称空间')
+     string(name: 'email_To', defaultValue: '121715041@qq.com', description: '构建邮件变量，多人，使用 英文逗号分离')
+ }
+ 
+  environment {
+    changeCause = sh(script: "git log --oneline -1 HEAD", returnStdout: true).trim()
+    imageTag = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+    // 定义仓库地址
+    Docker_Registry = 'registry.cn-hangzhou.aliyuncs.com'
+    Project_Name = 'kubernetes-devops1'
+    App_Name = 'java-hello-world'
+    Ingress = 'www.java-hello-world.org'
+  }
+  
+  stages{
+    stage('Clone Code'){
+     steps{
+       echo "1.Clone Code"
+       sh """
+       echo "${BranchName}"  && id
+       echo "${imageTag}"
+       echo "${changeCause}"
+       """
+       } 
+     }
+    stage('Unit Test'){
+      steps{
+        echo "2.单元测试"
+      }
+    }
+    stage('Build'){
+      steps{
+        echo "3.代码打包"
+        container('maven'){
+           sh """
+           mvn --version && id
+           mvn package -DskipTests  &&  ls ./target/*.jar
+           """
+          }
+       }
+     }
+     stage('Gradle'){
+       steps{
+         echo "3.gradle 打包"
+         container('gradle'){
+           sh """
+           gradle --version
+           """
+         }
+       }
+     }
+    stage('Docker'){
+      steps{
+        echo "4.Docker Build and Docker Push"
+        withCredentials([usernamePassword(
+          credentialsId: 'Docker Auth', 
+          passwordVariable: 'Docker_Password', 
+          usernameVariable: 'Docker_User')]) {
+        container('docker'){
+          sh """
+          docker info && docker version
+          docker login -u ${Docker_User} -p ${Docker_Password} ${Docker_Registry}
+          docker build -t ${Docker_Registry}/${Project_Name}/${App_Name}:${BranchName}-${imageTag} .
+          docker push ${Docker_Registry}/${Project_Name}/${App_Name}:${BranchName}-${imageTag}
+          docker rmi ${Docker_Registry}/${Project_Name}/${App_Name}:${BranchName}-${imageTag}
+          """
+           }
+        }
+       }
+     }
+    stage('Deploy K8S'){
+      steps{
+        withCredentials([file(
+          credentialsId: 'private-k8s', 
+          variable: 'KUBECONFIG')]) {
+            echo "5.开始部署k8s集群"
+          container('kubectl'){
+            sh "mkdir -p ~/.kube && cp ${KUBECONFIG} ~/.kube/config"
+          script {
+            echo "查看 K8S 集群 Pod 列表"
+            sh """
+                 kubectl get pods -n ${NameSpace}
+                 kubectl version  && kubectl get nodes
+                 cd manifests
+                 sed -i 's@__appname__@${App_Name}@g'  deployment.yaml service.yaml ingress.yaml
+                 sed -i 's@__imagename__@${Docker_Registry}/${Project_Name}/${App_Name}@g' deployment.yaml
+                 sed -i 's@__version__@${BranchName}-${imageTag}@g' deployment.yaml
+                 sed -i 's@__CHANGE_CAUSE__@${BranchName}-${imageTag}@g' deployment.yaml
+                 sed -i 's@__containerport__@8080@g' deployment.yaml service.yaml
+                 sed -i 's@__serviceport__@8080@g' service.yaml ingress.yaml
+                 sed -i 's@__serviceName__@${App_Name}@g' ingress.yaml
+                 sed -i 's@__ingressName__@${App_Name}@g' ingress.yaml
+                 sed -i 's@__IngressHost__@${Ingress}@g' ingress.yaml
+                 kubectl apply -f ./ -n ${NameSpace} 
+                 kubectl get all -n ${NameSpace} -l k8s-app=java-hello-world
+            """
+          }
+        } 
+       }
+     }
+    }
+  }
+  post{
+     success{
+        emailext(
+                 subject: '构建通知：${PROJECT_NAME} - Build # ${BUILD_NUMBER} - ${BUILD_STATUS}!',
+                 to: "${email_To}",
+                 body: '${FILE,path="email.html"}'
+                )
+     }
+     failure {
+        emailext(
+                 subject: '构建通知：${PROJECT_NAME} - Build # ${BUILD_NUMBER} - ${BUILD_STATUS}!',
+                 to: "${email_To}",
+                 body: '${FILE,path="email.html"}'
+                )
+    }
+    aborted {
+        emailext(
+                 subject: '构建通知：${PROJECT_NAME} - Build # ${BUILD_NUMBER} - ${BUILD_STATUS}!',
+                 to: "${email_To}",
+                 body: '${FILE,path="email.html"}'
+                )
+    }
+  }
+}     

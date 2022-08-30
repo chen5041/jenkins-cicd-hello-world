@@ -1,0 +1,64 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels: 
+    jenkins-slave: true 
+spec:
+  imagePullSecrets:
+  - name: "aliyun"
+  containers:
+    - name: jnlp
+      image: registry.cn-hangzhou.aliyuncs.com/kubernetes-devops1/jenkins-slave-jdk:1.8
+      env:
+      - name: JAVA_OPTS
+        value: -Xms2048m -Xmx2048m -XshowSettings:vm -Dhudson.slaves.NodeProvisioner.initialDelay=0 -Dhudson.slaves.NodeProvisioner.MARGIN=50 -Dhudson.slaves.NodeProvisioner.MARGIN0=0.85 -Duser.timezone=Asia/Shanghai -Dfile.encoding=utf-8
+      tty: true
+    - name: maven
+      image: maven:3.6.1-jdk-8-alpine
+      imagePullPolicy: "IfNotPresent"
+      command:
+      - cat
+      tty: true
+      # 每个volumeMounts需要写在对应的image下面,否则会挂载不上去
+      volumeMounts: 
+      - name: maven-cache
+        mountPath: /root/.m2
+    - name: gradle 
+      image: gradle:jdk8
+      imagePullPolicy: "IfNotPresent"
+      command:
+      - cat
+      tty: true
+      # 每个volumeMounts需要写在对应的image下面,否则会挂载不上去
+      volumeMounts: 
+      - name: gradle-cache
+        mountPath: /home/gradle/.gradle
+    - name: docker
+      image: docker
+      imagePullPolicy: IfNotPresent
+      tty: true
+      command:
+      - cat
+      # 每个volumeMounts需要写在对应的image下面,否则会挂载不上去
+      volumeMounts:
+      - name: docker-sock
+        mountPath: /var/run/docker.sock
+    - name: kubectl
+      image: cnych/kubectl
+      imagePullPolicy: IfNotPresent
+      tty: true
+      command:
+      - cat
+  volumes:
+  - name: maven-cache
+    persistentVolumeClaim:
+      claimName: maven-repo-pvc
+      readOnly: false
+  - name: gradle-cache
+    persistentVolumeClaim:
+      claimName: gradle-repo-pvc
+      readOnly: false
+  - name: docker-sock
+    hostPath:
+      path: "/var/run/docker.sock"

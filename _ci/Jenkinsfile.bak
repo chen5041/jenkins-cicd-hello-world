@@ -1,0 +1,117 @@
+//maven项目缓存，提供编译速度
+def Maven_Repo = '/root/.m2'
+
+//Gradel项目缓存，提供编译速度
+def Gradle_Repo ='/home/gradle/.gradle'
+
+//kubectl和docker执行文件，这个可以打到镜像里面，这边直接共享的方式提供
+def Share_Repo = '/tmp/repository'
+
+// 定义仓库地址
+def Docker_Registry = 'registry.cn-hangzhou.aliyuncs.com'
+def Project_Name = 'kubernetes-devops1'
+def App_Name = 'java-hello-world'
+def Ingress = 'www.java-hello-world.org'
+
+
+podTemplate(label: 'jenkins-slave',cloud: 'kubernetes',namespace:"jenkins",
+    containers: [
+        containerTemplate(name: 'jnlp',image: 'registry.cn-hangzhou.aliyuncs.com/kubernetes-devops1/jenkins-slave-jdk:1.8',ttyEnabled: true,alwaysPullImage: false),
+        //containerTemplate(name: 'maven',image:'maven:3.6',ttyEnabled: true,alwaysPullImage: false,command: 'cat'),  
+		//containerTemplate(name: 'gradle',image: 'gradle:4.5.1-jdk9',ttyEnabled: true,alwaysPullImage: false,command: 'cat'),
+		containerTemplate(name: 'docker',image: 'docker',ttyEnabled: true,alwaysPullImage: false,command: 'cat'),
+		containerTemplate(name: 'kubectl',image: 'cnych/kubectl',ttyEnabled: true,alwaysPullImage: false,command: 'cat')
+],
+    volumes: [
+        persistentVolumeClaim(mountPath: '${Gradle_Repo}', claimName: 'gradle-repo-pvc',readOnly: false),
+        persistentVolumeClaim(mountPath: "${Maven_Repo}", claimName: 'maven-repo-pvc', readOnly: false),
+        persistentVolumeClaim(mountPath: "${Share_Repo}", claimName: 'sharefile-repo-pvc', readOnly: false),
+        hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock')
+	]
+  )
+{
+    node('jenkins-slave') {
+    def myRepo = checkout scm
+    def gitBranch = myRepo.GIT_BRANCH
+    
+	timestamps{
+        stage('Git Clone'){
+          script {
+          // 定义Commit_ID 和分支名称
+           Image_Tag = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+           Branch = sh(script: "echo ${gitBranch}|cut -d/ -f2", returnStdout: true).trim()
+          sh """
+         echo "1.Git Clone Code"
+         echo ${Image_Tag}
+         echo ${Branch}
+            """
+          }
+        }
+       stage('Unit Test'){
+         sh """
+           echo "2.Unit Test"
+			"""
+		 }
+        stage('代码编译打包'){
+          try {
+            container('jnlp'){
+            echo "3.Build Package"
+           sh """
+             mvn package -DskipTests
+             ls ./target/*.jar
+             """
+            }
+          }
+          catch (exc) {
+            println "Failed to test - ${currentBuild.fullDisplayName}"
+            throw(exc)
+           }
+        }
+        stage('Build Docker Image'){
+           container('docker'){
+             echo "4.Build Docker Image"
+             withCredentials([usernamePassword(credentialsId: 'Docker Auth', passwordVariable: 'Docker_Password', usernameVariable: 'Docker_User')]) {
+             sh """
+              docker info
+              docker login ${Docker_Registry} -u ${Docker_User} -p ${Docker_Password}
+              docker build -t ${Docker_Registry}/${Project_Name}/${App_Name}:${Branch}-${Image_Tag} .
+              docker push ${Docker_Registry}/${Project_Name}/${App_Name}:${Branch}-${Image_Tag} 
+            """
+            }
+          }
+        }
+        stage('Deploy For K8s'){
+        withCredentials([file(credentialsId: 'private-k8s', variable: 'KUBECONFIG')]) {
+          container('kubectl'){
+            sh "mkdir -p ~/.kube && cp ${KUBECONFIG} ~/.kube/config"
+            script{
+            App=sh(script: "kubectl get deploy -n ${NameSpace} ${App_Name}|tail -1|cut -d\" \" -f1", returnStdout: true).trim()
+            echo "查看 K8S 集群 Pod 列表"
+            sh """
+            if [ "${App}" == "${App_Name}" ];then
+               kubectl set image deploy ${App_Name} ${App_Name}=${Docker_Registry}/${Project_Name}/${App_Name}:${Branch}-${Image_Tag} -n ${NameSpace} --record
+            else
+             kubectl get pods -n ${NameSpace}
+             kubectl version  && kubectl get nodes
+             cd manifests
+             sed -i 's@__appname__@${App_Name}@g'    deployment.yaml service.yaml ingress.yaml
+             sed -i 's@__imagename__@${Docker_Registry}/${Project_Name}/${App_Name}@g' deployment.yaml
+             sed -i 's@__version__@${Branch}-${Image_Tag}@g' deployment.yaml
+             sed -i 's@__containerport__@8080@g' deployment.yaml service.yaml
+             sed -i 's@__serviceport__@8080@g' service.yaml ingress.yaml
+             sed -i 's@__serviceName__@${App_Name}@g' ingress.yaml
+             sed -i 's@__ingressName__@${App_Name}@g' ingress.yaml
+             sed -i 's@__IngressHost__@${Ingress}@g' ingress.yaml
+             kubectl apply -f ./ -n ${NameSpace} --record
+             kubectl get all -n ${NameSpace} -l k8s-app=java-hello-world
+            fi
+            """
+           }
+         }
+       }
+     }
+    }
+  }
+}
+
+

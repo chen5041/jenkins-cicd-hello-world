@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>[Jenkins] ${JOB_NAME}构建日志</title>
+  <style>
+    body {
+      font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    .first-title {
+      font-size: 20px;
+      font-weight: bold;
+      margin: 16px 0 8px 0;
+    }
+
+    .build-status {
+      color: #CC0000;
+      margin-bottom: 16px;
+    }
+
+    ul {
+      list-style-type: none;
+      padding-left: 16px;
+      margin-top: 8px;
+      margin-bottom: 16px;
+    }
+
+    .second-title {
+      color: #0B610B;
+      font-size: 16px;
+    }
+
+    .tr-label {
+      display: inline-block;
+      width: 85px;
+      font-size: 14px;
+      text-align: right;
+    }
+
+    .tr-value {
+      font-size: 14px;
+      text-align: left;
+    }
+
+    .footer {
+      margin-top: 16px;
+      font-size: 10px;
+    }
+  </style>
+</head>
+<body>
+<div class="first-title">[${PROJECT_NAME}]-${BUILD_NUMBER}次构建日志</div>
+<div class="build-status">构建结果 - ${BUILD_STATUS}</div>
+
+<div class="second-title">构建信息</div>
+<ul>
+  <li>
+    <span class="tr-label">项目名称：</span>
+    <span class="tr-value">${PROJECT_NAME}</span>
+  </li>
+  <li>
+    <span class="tr-label">构建编号：</span>
+    <span class="tr-value">${BUILD_NUMBER}</span>
+  </li>
+  <li>
+    <span class="tr-label">触发原因：</span>
+    <span class="tr-value">${CAUSE}</span>
+  </li>
+  <li>
+    <span class="tr-label">构建状态：</span>
+    <span class="tr-value">${BUILD_STATUS}</span>
+  </li>
+  <li>
+    <span class="tr-label" style="width:86px">CommitID：</span>
+    <span class="tr-value">${GIT_REVISION}</span>
+  </li>
+  <li>
+    <span class="tr-label">构建分支：</span>
+    <span class="tr-value">${GIT_BRANCH}</span>
+  </li>
+  <li>
+    <span class="tr-label">构建日志：</span>
+    <span class="tr-value"><a href="${BUILD_URL}console">${BUILD_URL}console</a></span>
+  </li>
+  <li>
+    <span class="tr-label">构建Url：</span>
+    <span class="tr-value"><a href="${BUILD_URL}">${BUILD_URL}</a></span>
+  </li>
+  <li>
+    <span class="tr-label">工作目录：</span>
+    <span class="tr-value"><a href="${BUILD_URL}ws">${BUILD_URL}ws</a></span>
+  </li>
+  <li>
+    <span class="tr-label">项目Url：</span>
+    <span class="tr-value"><a href="${PROJECT_URL}">${PROJECT_URL}</a></span>
+  </li>
+</ul>
+
+<div class="second-title">最近提交</div>
+<ul>
+  ${CHANGES_SINCE_LAST_SUCCESS, reverse=true, format="%c", changesFormat="<li>%d [%a] %m</li>"}
+</ul>
+
+<span>详细提交:</span>
+<a href="${PROJECT_URL}changes">${PROJECT_URL}changes</a>
+
+<div class="footer">本邮件由系统自动发出，请勿回复！</div>
+</body>
+</html>

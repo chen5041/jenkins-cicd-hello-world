@@ -1,0 +1,70 @@
+image: alpine:v1   
+    
+before_script:
+  - java -version && echo "before_script"
+
+stages:
+  - test
+  - build
+  - deploy
+
+code_unittest1:
+  stage: test
+  script:
+  - ls 
+  - cat /etc/*release
+  - uname -a
+  - mvn -v
+  - npm -v
+  - cnpm -v
+
+code_unittest2:
+  stage: test
+  script:
+  - gradle --version
+  - node -v
+  - java -version
+  - docker version
+  - docker info
+
+docker_build:
+  stage: build
+  script:
+  - mvn clean package -DskipTests
+  - ls target/  
+  - mkdir -p /cache/${CI_PROJECT_NAME}-${CI_PROJECT_ID}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_SHORT_SHA}
+  - cp target/demo-0.0.1-SNAPSHOT.jar  /cache/${CI_PROJECT_NAME}-${CI_PROJECT_ID}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_SHORT_SHA}
+  - cp target/demo-0.0.1-SNAPSHOT.jar /app.jar
+  - docker login ${CI_DOCKER_REGISTRY} --username ${CI_REGISTRY_USER} --password=${CI_REGISTRY_PASSWORD}
+  - docker build -t ${CI_REGISTRY_IMAGE}/${CI_PROJECT_NAME}:`date +%Y.%m.%d`-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME} . 
+  - docker push ${CI_REGISTRY_IMAGE}/${CI_PROJECT_NAME}:`date +%Y.%m.%d`-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}
+  - rm -rf /cache/${CI_PROJECT_NAME}-${CI_PROJECT_ID}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_SHORT_SHA}
+  only:
+  - master
+
+  
+deploy-k8s:
+  image: registry.custom.local:5000/kubeadm-ha/nginx-kubectl:v1 
+  stage: deploy
+  script:
+  - nginx && kubectl version && kubectl get nodes 
+  - cd manifests && date && sleep 30
+  - |
+    if kubectl get deployment -n devops |grep "${CI_PROJECT_NAME}";then
+        echo "update image"
+        kubectl set image deployment ${CI_PROJECT_NAME} ${CI_PROJECT_NAME}=${CI_REGISTRY_IMAGE}/${CI_PROJECT_NAME}:`date +%Y.%m.%d`-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME} -n devops --record
+    else
+        sed -i "s@__appname__@${CI_PROJECT_NAME}@g" deployment.yaml
+        sed -i "s@__namespace__@devops@g" deployment.yaml
+        sed -i "s@__imagename__@${CI_REGISTRY_IMAGE}/${CI_PROJECT_NAME}@g" deployment.yaml
+        sed -i "s@__version__@`date +%Y.%m.%d`-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_NAME}@g" deployment.yaml
+        sed -i "s@__containerport__@8080@g" deployment.yaml
+        sed -i "s@__imagepullsecret__@registry-aliyun@g" deployment.yaml
+        sed -i "s@__nodeport__@38080@g" deployment.yaml
+        kubectl apply -f deployment.yaml  --record
+    fi
+  - kubectl get pod -n devops 
+  only:
+  - master
+
+  

@@ -1,0 +1,33 @@
+kind: Deployment 
+apiVersion: apps/v1
+metadata:
+  labels:
+    k8s-app: __appname__
+  name: __appname__
+  annotations:
+    kubernetes.io/change-cause: "__CHANGE_CAUSE__"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      k8s-app: __appname__
+  template:
+    metadata:
+      labels:
+        k8s-app: __appname__
+      name: __appname__
+    spec: 
+      imagePullSecrets: 
+      - name: aliyun
+      containers:
+        - name: __appname__
+          image: __imagename__:__version__
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: __containerport__
+              name: web
+              protocol: TCP
+
+
+
