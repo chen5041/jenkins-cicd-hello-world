@@ -20,7 +20,6 @@ spec:
       command:
       - cat
       tty: true
-      # 每个volumeMounts需要写在对应的image下面,否则会挂载不上去
       volumeMounts: 
       - name: maven-cache
         mountPath: /root/.m2
@@ -30,7 +29,6 @@ spec:
       command:
       - cat
       tty: true
-      # 每个volumeMounts需要写在对应的image下面,否则会挂载不上去
       volumeMounts: 
       - name: gradle-cache
         mountPath: /home/gradle/.gradle
@@ -40,7 +38,6 @@ spec:
       tty: true
       command:
       - cat
-      # 每个volumeMounts需要写在对应的image下面,否则会挂载不上去
       volumeMounts:
       - name: docker-sock
         mountPath: /var/run/docker.sock
