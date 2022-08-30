@@ -4,9 +4,7 @@ pipeline{
          label 'jenkins-slave'
          namespace "jenkins"
          cloud "kubernetes" 
-         // 这里引用Pod模板
          yamlFile '_ci/KubernetesPod.yaml'
-         
           }        
     }
   options{timestamps()}
@@ -19,7 +17,6 @@ pipeline{
   environment {
     changeCause = sh(script: "git log --oneline -1 HEAD", returnStdout: true).trim()
     imageTag = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-    // 定义仓库地址
     Docker_Registry = 'registry.cn-hangzhou.aliyuncs.com'
     Project_Name = 'kubernetes-devops1'
     App_Name = 'java-hello-world'
